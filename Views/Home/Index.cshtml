@@ -1,0 +1,230 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+    var items = (List<Item>)ViewBag.Items;
+}
+
+<div class="container text-center">
+    <h1 class="display-4 mb-5">Item Price Calculator</h1>
+    @*Form for calculation of items*@
+    <form class="form" method="post" enctype="multipart/form-data" asp-controller="Home" asp-action="Index">
+        @Html.AntiForgeryToken()
+        <div class="row" style="flex-direction:column;">
+            <div class="row" style="flex-direction:row">
+                @* Customer ID *@
+                <label class="col-md-3">Customer ID:</label>
+                <input class="col-md-3 form-control" id="customer_id" type="number" tabindex="1" min="1" />
+                <p class="col text-center">Hint: Customer IDs 1, 2 and 3 have been populated</p>
+            </div>
+            @* Items *@
+            <div class="col">
+                <div class="row">
+                    <label class="text-left font-weight-bold">Items:</label>
+                </div>
+                <div class="items">
+                    <div class="row mb-5" style="flex-direction:row">
+                        <label class="col">Item 1:</label>
+                        @* Select Item *@
+                        <select class="col form-control item" id="item_1" tabindex="2" item_no="1">
+                            <option value="0" disabled selected>Please select an Item</option>
+                            @foreach (var item in items)
+                            {
+                                <option value="@item.ItemId">@item.ItemName : $@item.ItemPrice</option>
+                            }
+                        </select>
+                        @* Specify Quantity *@
+                        <label class="col">Item Quantity:</label>
+                        <input class="col form-control item_qty" id="item_qty_1" item_no="1" tabindex="3" type="number" min="1" />
+                    </div>
+                </div>
+                @* Add more Items button *@
+                <div class="row">
+                    <span class="btn btn-outline-info text-left font-weight-bold" id="btnAddItems" tabindex="4">Add more Items</span>
+                </div>
+                @* Calculate Button *@
+                <div class="row">
+                    <button class="col btn btn-info text-center font-weight-bold mt-3 text-uppercase" id="btnCalculate" tabindex="5">Calculate</button>
+                </div>
+            </div>
+            @* Area that displays the calculation *@
+            <div class="calculation_area col text-left invisible">
+                <div class="row mt-5" style="flex-direction:column;">
+                    <div style="border: 1px dashed aqua;" class="seperator mb-5 mt-5"></div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Customer ID: </span> <span id="calc_cust_id"></span>
+                        </div>
+                    </div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Customer Name: </span><span id="calc_cust_name"></span>
+                        </div>
+                    </div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Address: </span> <span id="calc_cust_address"></span>
+                        </div>
+                    </div>
+                    <div class="mt-5 calculation text-left">
+
+                    </div>
+                    <div style="border: 1px dashed aqua;" class="seperator mb-5 mt-5"></div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Sub-total:</span> $<span id="calc_sub_total"></span>
+                        </div>
+                    </div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Tax amount ( <span id="calc_tax_rate"></span> %) :</span> $<span id="calc_tax_amt"></span> 
+                        </div>
+                    </div>
+                    <div class="row mt-5" style="flex-direction:row">
+                        <div class="col">
+                            <span class="font-weight-bold">Total amount:</span> $ <span id="calc_total_amt"></span> 
+                        </div>
+                    </div>
+                    <div style="border: 1px dashed aqua;" class="seperator mb-5 mt-5"></div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@* Script code for calculation and adding more item rows *@
+<script>
+    //Initialize the items
+    var items = @Json.Serialize(items);
+    var tot_items = 1; //Total number of item rows.
+
+    //On Add Items Button click
+    $("#btnAddItems").on("click", function () {
+        tot_items++; // increase total item by 1.
+        //Select html
+        var select = '<div class="row mb-5" style="flex-direction:row"><label class="col" > Item '+tot_items+':</label ><select class="col form-control item" id="item_'+tot_items+'" item_no="'+tot_items+'"><option value="0" disabled selected>Please select an Item</option>';
+        for (var item in items) {
+            select += '<option value="' + items[item].itemId + '">' + items[item].itemName + ' : $' + items[item].itemPrice +'</option>';
+        }
+        select += '</select><label class="col">Item Quantity:</label><input class="col form-control item_qty" id="item_qty_'+tot_items+'" item_no ="'+tot_items+'" type = "number" min = "1" /></div>';
+        $(".items").append(select);
+    });
+
+    //On Calculate button click
+    $("#btnCalculate").on("click", function (e) {
+        e.preventDefault();
+        //Validate data
+        if (validate_data() == false) {
+            return false;
+        } else {
+            //Display calculation area
+            $(".calculation_area").removeClass('invisible');
+            //If data is validate, post data to get results of calculation
+            $.ajax({
+                type: "POST",
+                url: "/Home/PostCalculate",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("RequestVerificationToken",
+                        $('input:hidden[name="__RequestVerificationToken"]').val());
+                },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                data: JSON.stringify({ //send data in json in json format
+                    CustomerID: $("#customer_id").val(),
+                    Items: getItems(),
+                }),
+                success: function (response) {
+                    //On successful response
+                    if (response.result == "Success") {
+                        var calc_data = '';
+                        //Append customer data from the response object
+                        // Customer ID
+                        $("#calc_cust_id").html(response.data.customer.customerId);
+                        // Customer Name
+                        $("#calc_cust_name").html(response.data.customer.customerName);
+                        //Customer address
+                        $("#calc_cust_address").html(response.data.customer.customerAddress + ' ' + response.data.customer.customerPostal + ' ' + response.data.customer.customerCity + ' ' + response.data.customer.customerProvince + ' ' + response.data.customer.customerCountry);
+                        //Append items and its calculations
+                        for (var item in response.data.items) {
+                            calc_data += '<div class="row mt-5" style="flex-direction:row"><div class="col"><span class="font-weight-bold">Item ID:</span> ' + response.data.items[item].itemID + '</div><div class="col"><span class="font-weight-bold">Item Name:</span> ' + response.data.items[item].itemName + ' </div><div class="col">(x ' + response.data.items[item].quantity + ') </div><div class="col"> $' + response.data.items[item].price + '</div></div>';
+
+                        }
+                        //Append Sub-total
+                        $("#calc_sub_total").html(response.data.sub_total);
+                        //Append tax_rate
+                        $("#calc_tax_rate").html(response.data.tax_rate);
+                        //Append tax_amt
+                        $("#calc_tax_amt").html(response.data.tax_amt);
+                        //Append total amt
+                        $("#calc_total_amt").html(response.data.total_amt);
+                        //Append html data to the calculation div
+                        $(".calculation").html(calc_data);
+                    } else {
+                        //Alert in case of error with the message from the backend
+                        alert(response.message);
+                    }
+                },
+                failure: function (response) {
+                    //Alert in case of failure of ajax
+                    alert(response);
+                }
+            });
+        }
+    });
+
+    //Method which validates data before it is used to calculated
+    function validate_data() {
+        var is_valid = true; //Flag to represent if data is valid
+        //Validate customer ID
+        if ($("#customer_id").val() == "" || $("#customer_id").val() == null) {
+            is_valid = false;
+            $("#customer_id").addClass("invalid");
+        } else {
+            $("#customer_id").removeClass("invalid");
+        }
+        //Validate all items and their quantity
+        for (var i = 1; i <= tot_items; i++) {
+            //Validated Selected Item
+            var sel_item = $("#item_" + i).val();
+            if (sel_item == "" || sel_item == null) {
+                is_valid = false; //If the item is not selected at all
+                $("#item_" + i).addClass("invalid");
+            } else {
+                if (parseInt(sel_item) > 0) {
+                    $("#item_"+i).removeClass("invalid");
+                }
+            }
+            //Validate the item's quantity
+            var sel_item_qty = $("#item_qty_" + i).val();
+            if (sel_item_qty == "" || sel_item_qty == null) {
+                //If item quantity input box is empty or null
+                is_valid = false;
+                $("#item_qty_" + i).addClass("invalid");
+            } else if(parseInt(sel_item_qty) < 1){
+                is_valid = false;
+                $("#item_qty_" + i).addClass("invalid");
+            } else {
+                $("#item_qty_" + i).removeClass("invalid");
+            }
+        }
+        return is_valid;
+    }
+    //Get all the item's data
+    function getItems() {
+        var items = [];
+        $(".item").each(function () {
+            var item = {};
+            item.ItemId = parseInt($(this).val());
+            var item_sr_no = $(this).attr('item_no');
+            item.Quantity = parseFloat($("#item_qty_" + item_sr_no).val());
+            items.push(item);
+        });
+        return items;
+    }
+</script>
+@*CSS for the invalid input*@
+<style>
+
+    .invalid {
+        border: 1px solid red;
+    }
+</style>
